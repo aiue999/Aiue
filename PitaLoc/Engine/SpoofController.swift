@@ -67,11 +67,7 @@ final class SpoofController: ObservableObject {
             errorMessage = "先にペアリングファイルを読み込んでください(設定 ⚙︎)。"
             return
         }
-        refreshVPN()
-        guard vpnConnected else {
-            errorMessage = "LocalDevVPN が接続されていません。下の「VPNを接続」を押してから、もう一度お試しください。"
-            return
-        }
+        refreshVPN()  // 表示用。判定がずれていても接続自体は試す
         state = .connecting
         errorMessage = nil
         let result = await engine.set(latitude: coordinate.latitude, longitude: coordinate.longitude,

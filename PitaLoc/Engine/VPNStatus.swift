@@ -18,11 +18,11 @@ enum LocalDevVPN {
 
     @MainActor static var isInstalled: Bool { UIApplication.shared.canOpenURL(schemeURL) }
 
-    /// VPN が繋がると 10.7.0.x のアドレスがインターフェースに現れる
+    /// VPN が繋がると 10.7.x.x のアドレス(例: Tunnel IP 10.7.1.1)がインターフェースに現れる
     static var isConnected: Bool {
         let target = targetIP
         let parts = target.split(separator: ".")
-        let prefix = parts.count == 4 ? parts.dropLast().joined(separator: ".") + "." : target
+        let prefix = parts.count == 4 ? parts.prefix(2).joined(separator: ".") + "." : target
         return interfaceAddresses().contains { $0 == target || $0.hasPrefix(prefix) }
     }
 

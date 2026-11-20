@@ -25,14 +25,20 @@ struct PitaLocApp: App {
                     do { try pairing.importFile(from: url) }
                     catch { spoof.errorMessage = error.localizedDescription }
                 }
-                // pitaloc:// で LocalDevVPN から戻ってきた場合
+                // pitaloc:// で LocalDevVPN から戻ってきた場合(接続完了まで少し待って再確認)
                 spoof.refreshVPN()
+                for delay in [1.5, 4.0] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { spoof.refreshVPN() }
+                }
             }
             .onAppear {
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { spoof.refreshVPN() }
+                if phase == .active {
+                    spoof.refreshVPN()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { spoof.refreshVPN() }
+                }
             }
         }
     }
