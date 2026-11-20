@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ["v*"]
 
 env:
   # 使う idevice のコミット(動作確認がとれたら固定のまま使う)
@@ -96,6 +95,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             build | tee xcodebuild.log | grep -E "error:|warning: .*PitaLoc|BUILD" || true
           test -d build/Build/Products/Release-iphoneos/PitaLoc.app
 
@@ -119,9 +119,22 @@ jobs:
           name: xcodebuild-log
           path: xcodebuild.log
 
-      # タグ (v1.0.0 など) を push したときは Releases にも置く
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
+      # main のビルドは毎回「latest」リリースに置く(SideStore の配信元として使う)
+      - name: Make SideStore source
+        if: github.ref == 'refs/heads/main'
+        run: |
+          python3 scripts/make_source.py "${{ github.repository }}"
+          cp PitaLoc/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png icon.png
+
+      - name: Publish latest release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          files: PitaLoc.ipa
+          tag_name: latest
+          name: PitaLoc (latest)
+          body: "SideStore の Sources に https://github.com/${{ github.repository }}/releases/download/latest/source.json を追加すると、自動でアップデートされます。"
+          make_latest: true
+          files: |
+            PitaLoc.ipa
+            source.json
+            icon.png

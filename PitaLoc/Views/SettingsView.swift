@@ -6,12 +6,36 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("pitaloc.tunnelIP") private var tunnelIP = LocalDevVPN.defaultIP
     @AppStorage("pitaloc.setupDone") private var setupDone = false
+    @AppStorage("pitaloc.jitterEnabled") private var jitterEnabled = true
+    @AppStorage("pitaloc.jitterMeters") private var jitterMeters = 5.0
     @State private var showImporter = false
     @State private var message: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("自然な揺らぎ", isOn: $jitterEnabled)
+                    if jitterEnabled {
+                        VStack(alignment: .leading) {
+                            Text("揺らぎの大きさ:半径 約\(Int(jitterMeters)) m")
+                            Slider(value: $jitterMeters, in: 1...20, step: 1)
+                        }
+                    }
+                } header: {
+                    Text("固定のしかた")
+                } footer: {
+                    Text("オンにすると、固定中の位置を数メートルの範囲でゆっくり漂わせ、本物の GPS に近い動きにします。")
+                }
+
+                Section {
+                    LabeledContent("アプリの期限", value: Provisioning.label)
+                } header: {
+                    Text("有効期限")
+                } footer: {
+                    Text("期限が来ると起動できなくなります。LocalDevVPN を接続して SideStore を開き「Refresh All」を押すと延長されます(期限の1日前と3時間前に通知します)。")
+                }
+
                 Section("ペアリングファイル") {
                     LabeledContent("状態", value: pairing.hasPairingFile ? "読み込み済み" : "未設定")
                     Button("ファイルを選び直す") { showImporter = true }

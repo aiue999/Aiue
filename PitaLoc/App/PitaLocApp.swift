@@ -32,7 +32,9 @@ struct PitaLocApp: App {
                 }
             }
             .onAppear {
-                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    if granted { Provisioning.scheduleReminders() }
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
