@@ -1,0 +1,127 @@
+name: Build IPA
+
+# GitHub の「Actions」タブ → 「Build IPA」 → 「Run workflow」で手動実行できます。
+# main に push したときも自動で実行されます。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+env:
+  # 使う idevice のコミット(動作確認がとれたら固定のまま使う)
+  IDEVICE_REPO: https://github.com/jkcoxson/idevice.git
+  IDEVICE_REF: 2dca9a58a9a1dd02ec7d6213fcfd8fe861e74132
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      # ---- 1. idevice FFI(Rust)を iOS 向けにビルド ----
+      - name: Checkout idevice
+        run: |
+          git clone --recursive "$IDEVICE_REPO" idevice-src
+          cd idevice-src
+          git checkout "$IDEVICE_REF"
+          git submodule update --init --recursive
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            idevice-src/target
+          key: idevice-ios-${{ env.IDEVICE_REF }}
+
+      - name: Install Rust target
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add aarch64-apple-ios
+          brew list cmake >/dev/null 2>&1 || brew install cmake
+          command -v bindgen >/dev/null 2>&1 || cargo install --locked bindgen-cli
+
+      - name: Build libidevice_ffi.a (aarch64-apple-ios)
+        working-directory: idevice-src/ffi
+        run: |
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(xcrun --sdk iphoneos --show-sdk-path)"
+          export IPHONEOS_DEPLOYMENT_TARGET=17.0
+          cargo build --release --target aarch64-apple-ios
+
+      - name: Copy library + header into project
+        run: |
+          mkdir -p Vendor/idevice
+          cp idevice-src/target/aarch64-apple-ios/release/libidevice_ffi.a Vendor/idevice/
+          cp idevice-src/ffi/idevice.h Vendor/idevice/
+          ls -la Vendor/idevice
+          # 使っている関数がヘッダにあるか確認
+          for f in tunnel_create_rppairing rp_pairing_file_read remote_server_connect_rsd \
+                   location_simulation_new location_simulation_set location_simulation_clear; do
+            grep -q "$f" Vendor/idevice/idevice.h || { echo "missing $f"; exit 1; }
+          done
+
+      # ---- 2. アプリをビルド(署名なし)----
+      - name: Generate app icon
+        run: |
+          python3 -m pip install --break-system-packages --quiet pillow || python3 -m pip install --quiet pillow
+          python3 scripts/make_icon.py
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build app (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project PitaLoc.xcodeproj \
+            -scheme PitaLoc \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | grep -E "error:|warning: .*PitaLoc|BUILD" || true
+          test -d build/Build/Products/Release-iphoneos/PitaLoc.app
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/PitaLoc.app Payload/
+          zip -qry PitaLoc.ipa Payload
+          ls -la PitaLoc.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PitaLoc-ipa
+          path: PitaLoc.ipa
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+
+      # タグ (v1.0.0 など) を push したときは Releases にも置く
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PitaLoc.ipa
