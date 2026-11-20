@@ -17,7 +17,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    # Apple Silicon のランナーは混みやすいので Intel を使う
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
